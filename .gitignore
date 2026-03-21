@@ -1,0 +1,39 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.DotSettings.user
+
+# Environment
+.env
+.env.local
+*.env
+
+# Logs
+logs/
+*.log
+
+# Database
+*.db
+*.sqlite
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+frontend/.env.local
+frontend/.env.production
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Certificates
+devops/certs/*.key
+devops/certs/*.crt
+devops/certs/*.pem
