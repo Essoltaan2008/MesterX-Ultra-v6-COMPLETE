@@ -1,0 +1,81 @@
+version: '3.9'
+
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: mesterx_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-mesterxdb}
+      POSTGRES_USER:     ${DB_USER:-mesterx}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-mesterx} -d ${DB_NAME:-mesterxdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend API (.NET 8) ─────────────────────────────────────────────────
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mesterx_api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT:              ${ENVIRONMENT:-Production}
+      ASPNETCORE_URLS:                     http://+:5000
+      ConnectionStrings__DefaultConnection: Host=db;Port=5432;Database=${DB_NAME:-mesterxdb};Username=${DB_USER:-mesterx};Password=${DB_PASSWORD};Include Error Detail=true
+      Jwt__Secret:                         ${JWT_SECRET}
+      Jwt__Issuer:                         mesterx-api
+      Jwt__Audience:                       mesterx-client
+      Jwt__ExpiryMinutes:                  60
+      Jwt__RefreshTokenExpiryDays:         30
+      AllowedOrigins__0:                   http://localhost:3000
+      AllowedOrigins__1:                   ${FRONTEND_URL:-https://app.mesterx.com}
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - api_logs:/app/logs
+
+  # ─── Frontend (Next.js) ───────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000/api}
+    container_name: mesterx_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  # ─── Nginx Reverse Proxy ──────────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: mesterx_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./devops/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./devops/certs:/etc/nginx/certs:ro
+    depends_on:
+      - api
+      - frontend
+
+volumes:
+  pgdata:
+  api_logs:
